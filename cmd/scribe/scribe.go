@@ -1,267 +1,236 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"mime/multipart"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
-	//	"github.com/USERNAME/simple-go-service/internal/something"
+	"example.com/transcribe/internal/cloud"
+	"example.com/transcribe/internal/transcribe"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/cognitoidentity"
-	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/transcribeservice"
 )
 
+type args struct {
+	userName *string
+	password *string
+	bucket   *string
+	fileName *string
+	remote   *bool
+	config   *string
+	job      *string
+}
+
 func main() {
-	//fmt.Println("There", something.Do())
+	var arg args
 
-	sess, err := session.NewSessionWithOptions(session.Options{
-		Config: aws.Config{Region: aws.String("us-east-1"), Credentials: nil},
-	})
-	r, sess2 := Login(sess, "user0", "FUKyou42!")
-	fmt.Println(r)
-	// importyant token := *r.AuthenticationResult.IdToken
-	//ans, err := GetRequest("https://h3ksw34ggi.execute-api.us-east-1.amazonaws.com/prod/job/2", token)
-	//fmt.Println(ans, err)
-	//urljsonbytes, err := PostRequest("https://h3ksw34ggi.execute-api.us-east-1.amazonaws.com/prod/job/1", token)
-	//url = url[1 : len(url)-1]
-	//var url string
-	//err = json.Unmarshal(urljsonbytes, &url)
-	//fmt.Println(url, err)
-	//fmt.Println(url[0])
-	//SendFile(url, "0001.mp4")
-	// Set up a new s3manager client
+	transribeCommand := flag.NewFlagSet("transcribe", flag.ExitOnError)
+	arg.fileName = transribeCommand.String("filename", "", "The file to be uploaded")
+	arg.remote = transribeCommand.Bool("remote", false, "abc")
 
-	bucket := flag.String("bucket", "tim-training-thing", "The s3 bucket to upload to")
-	filename := flag.String("filename", "", "The file to be uploaded")
-	flag.Parse()
+	listCommand := flag.NewFlagSet("list", flag.ExitOnError)
 
-	uploader := s3manager.NewUploader(sess2)
+	getCommand := flag.NewFlagSet("get", flag.ExitOnError)
+	arg.job = getCommand.String("job", "", "The job id")
 
-	file, err := os.Open(*filename)
-
+	switch os.Args[1] {
+	case "transcribe":
+		transribeCommand.Parse(os.Args[2:])
+	case "list":
+		listCommand.Parse(os.Args[2:])
+	case "get":
+		getCommand.Parse(os.Args[2:])
+	default:
+		fmt.Printf("%q is not valid command.\n", os.Args[1])
+		os.Exit(2)
+	}
+	config, err := LoadConfiguration("configuration.json")
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-
-	key := filepath.Base(file.Name())
-	loc := "s3://" + *bucket + "/users/user0/" + key
-	fmt.Println(loc, key)
-	uploadOutput, err := uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(*bucket),
-		Key:    aws.String("users/user0/" + key),
-		Body:   file,
-	})
-	fmt.Println(uploadOutput, err)
-	//if err != nil {
-	//	fmt.Println(err)
-	//}
-	fmt.Println("Done")
+	if transribeCommand.Parsed() {
+		if *arg.remote == true {
+			DoRemote(arg, config)
+		} else {
+			DoLocal(arg, config)
+		}
+	}
+	if listCommand.Parsed() {
+		fmt.Println("Listing")
+		ListJobs(arg, config)
+	}
+	if getCommand.Parsed() {
+		fmt.Println("Get")
+		GetJob(arg, config)
+	}
 	os.Exit(0)
+}
+
+func ListJobs(arg args, config Config) error {
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: aws.Config{Region: aws.String(config.Region), Credentials: nil},
+	})
+	lparams := cloud.LoginParams{
+		Region:        config.Region,
+		ApiKey:        config.ApiKey,
+		CognitoServer: config.CognitoServer,
+		IdentityPool:  config.IdentityPool,
+		UserName:      config.UserName,
+		Password:      config.Password,
+	}
+	authRequestOutput, _, _ := cloud.Login(sess, lparams)
+	token := *authRequestOutput.AuthenticationResult.IdToken
+	//fmt.Println(authRequestOutput, token)
+	data, err := cloud.GetRequest("https://h3ksw34ggi.execute-api.us-east-1.amazonaws.com/prod/job", token)
+	fmt.Println(string(data), err)
+	return err
+}
+
+func GetJob(arg args, config Config) error {
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: aws.Config{Region: aws.String(config.Region), Credentials: nil},
+	})
+	lparams := cloud.LoginParams{
+		Region:        config.Region,
+		ApiKey:        config.ApiKey,
+		CognitoServer: config.CognitoServer,
+		IdentityPool:  config.IdentityPool,
+		UserName:      config.UserName,
+		Password:      config.Password,
+	}
+	authRequestOutput, _, _ := cloud.Login(sess, lparams)
+	token := *authRequestOutput.AuthenticationResult.IdToken
+	//fmt.Println(authRequestOutput, token)
+	uri := "https://h3ksw34ggi.execute-api.us-east-1.amazonaws.com/prod/job/" + *arg.job
+	fmt.Println(uri)
+	data, err := cloud.GetRequest(uri, token)
+	var url string
+	json.Unmarshal(data, &url)
+	fmt.Println("HI: ", url)
+	return err
+}
+
+type Config struct {
+	Region        string `json:"region"`
+	ApiKey        string `json:"apiKey"`
+	CognitoServer string `json:"cognitoServer"`
+	IdentityPool  string `json:"identityPool"`
+	UserName      string `json:"userName"`
+	Password      string `json:"password"`
+	Bucket        string `json:"bucket"`
+}
+
+func LoadConfiguration(file string) (Config, error) {
+	var config Config
+	configFile, err := os.Open(file)
+	defer configFile.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+		return config, err
+	}
+	jsonParser := json.NewDecoder(configFile)
+	jsonParser.Decode(&config)
+	return config, nil
+}
+
+func DoRemote(arg args, config Config) error {
+	fmt.Println("DoRemote")
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: aws.Config{Region: aws.String(config.Region), Credentials: nil},
+	})
+	lparams := cloud.LoginParams{
+		Region:        config.Region,
+		ApiKey:        config.ApiKey,
+		CognitoServer: config.CognitoServer,
+		IdentityPool:  config.IdentityPool,
+		UserName:      config.UserName,
+		Password:      config.Password,
+	}
+	fmt.Println(lparams)
+	_, sess2, _ := cloud.Login(sess, lparams)
+	baseFileName := filepath.Base(*arg.fileName)
+	key := "users/" + config.UserName + "/" + baseFileName
+	loc := cloud.S3Location{
+		Bucket: config.Bucket,
+		Key:    key,
+	}
+	err = cloud.UploadFileToS3(sess2, *arg.fileName, loc)
+
+	return err
+}
+
+func DoLocal(arg args, config Config) error {
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: aws.Config{Region: aws.String(config.Region)},
+	})
+	if err != nil {
+		return err
+	}
+	file, err := os.Open(*arg.fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	baseFileName := filepath.Base(file.Name())
+
+	key := "todo/" + config.UserName + "/" + baseFileName
+	loc := cloud.S3Location{
+		Bucket: config.Bucket,
+		Key:    key,
+	}
+	err = cloud.UploadFileToS3(sess, *arg.fileName, loc)
 
 	transcriber := transcribeservice.New(sess)
 
-	jobname := "4"
+	jobname := transcribe.MakeJobId("something", time.Now().Unix())
 	mediaformat := "mp4"
 	languagecode := "en-US"
 
-	fmt.Println(uploadOutput, uploadOutput.Location)
+	loc2 := "s3://" + config.Bucket + "/todo/" + config.UserName + "/" + baseFileName
 	var media transcribeservice.Media
-	media.MediaFileUri = &loc
-	outputKey := "done/" + key + ".json"
-	aa, err := transcriber.StartTranscriptionJob(&transcribeservice.StartTranscriptionJobInput{
+	media.MediaFileUri = &loc2
+	outputKey := "done/" + baseFileName + ".json"
+	tparams := transcribeservice.StartTranscriptionJobInput{
 		TranscriptionJobName: &jobname,
 		Media:                &media,
 		MediaFormat:          &mediaformat,
 		LanguageCode:         &languagecode,
-		OutputBucketName:     bucket,
+		OutputBucketName:     &config.Bucket,
 		OutputKey:            &outputKey,
-	})
-	fmt.Println(aa, err)
+	}
+	_, err = transcriber.StartTranscriptionJob(&tparams)
+	if err != nil {
+		return err
+	}
 	max_tries := 6000
 	params := transcribeservice.GetTranscriptionJobInput{TranscriptionJobName: &jobname}
 	for i := 0; i < max_tries; i += 1 {
 		time.Sleep(time.Duration(10) * time.Second)
 		j, err := transcriber.GetTranscriptionJob(&params)
 		if err == nil {
-			fmt.Println(j)
 			if *j.TranscriptionJob.TranscriptionJobStatus == "COMPLETED" {
-				turi := *j.TranscriptionJob.Transcript.TranscriptFileUri
-				fmt.Println("URI: " + turi)
-				//Download(turi, "out.json")
-				break
+				out, err := os.Create(*arg.fileName + ".json")
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+				downloader := s3manager.NewDownloader(sess)
+				_, err = downloader.Download(out,
+					&s3.GetObjectInput{
+						Bucket: aws.String(config.Bucket),
+						Key:    aws.String(outputKey),
+					})
+				return err
 			}
 		}
 	}
-}
 
-func GetRequest(url string, token string) (string, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal("Error reading request. ", err)
-	}
-
-	req.Header.Set("Auth", token)
-
-	client := &http.Client{Timeout: time.Second * 10}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal("Error reading response. ", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal("Error reading body. ", err)
-	}
-	return string(body), nil
-}
-
-func PostRequest(url string, token string) ([]byte, error) {
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		log.Fatal("Error reading request. ", err)
-	}
-
-	req.Header.Set("Auth", token)
-
-	client := &http.Client{Timeout: time.Second * 10}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal("Error reading response. ", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal("Error reading body. ", err)
-	}
-	return body, nil
-}
-
-/*
-func Download(url string, fileout string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	out, err := os.Create(fileout)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	var b := resp.Body
-	var j interface()
-	err := json.Unmarshal(b, &j)
-	m:=j.([map[string]interface])
-
-	_, err = io.Copy(out, resp.Body)
-	return err
-}
-*/
-
-func newfileUploadRequest(uri string, params map[string]string, paramName, path string) (*http.Request, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-	fi, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	file.Close()
-
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile(paramName, fi.Name())
-	if err != nil {
-		return nil, err
-	}
-	part.Write(fileContents)
-
-	for key, val := range params {
-		_ = writer.WriteField(key, val)
-	}
-	err = writer.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return http.NewRequest("PUT", uri, body)
-}
-
-func SendFile(url string, filename string) error {
-	var extraParams map[string]string
-	request, err := newfileUploadRequest(url, extraParams, "file", filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	client := &http.Client{}
-	resp, err := client.Do(request)
-	fmt.Println(resp, err)
-	if err != nil && resp != nil && resp.Body != nil {
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		fmt.Println("Response: ", string(body), err)
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	return err
-}
-
-func Login(sess *session.Session, user string, password string) (*cognitoidentityprovider.InitiateAuthOutput, *session.Session) {
-	var apikey = "6kjlvu87ogi70h4qrqqj68mvr1"
-	params := &cognitoidentityprovider.InitiateAuthInput{
-		AuthFlow: aws.String("USER_PASSWORD_AUTH"),
-		AuthParameters: map[string]*string{
-			"USERNAME": aws.String(user),
-			"PASSWORD": aws.String(password),
-		},
-		ClientId: aws.String(apikey),
-	}
-	cip := cognitoidentityprovider.New(sess)
-	authResp, err := cip.InitiateAuth(params)
-	fmt.Println(authResp, err)
-	svc := cognitoidentity.New(sess)
-	idRes, err := svc.GetId(&cognitoidentity.GetIdInput{
-		IdentityPoolId: aws.String("us-east-1:acf87d88-718b-45bb-bb2d-93cb0f53a252"), //("us-east-1_BxAsOozif"),
-		Logins: map[string]*string{
-			"cognito-idp.us-east-1.amazonaws.com/us-east-1_BxAsOozif": authResp.AuthenticationResult.IdToken,
-		},
-	})
-	credRes, err := svc.GetCredentialsForIdentity(&cognitoidentity.GetCredentialsForIdentityInput{
-		IdentityId: idRes.IdentityId,
-		Logins: map[string]*string{
-			"cognito-idp.us-east-1.amazonaws.com/us-east-1_BxAsOozif": authResp.AuthenticationResult.IdToken,
-		},
-	})
-
-	sess2, err := session.NewSession(&aws.Config{
-		Region: aws.String("us-east-1"),
-		Credentials: credentials.NewStaticCredentials(*credRes.Credentials.AccessKeyId,
-			*credRes.Credentials.SecretKey,
-			*credRes.Credentials.SessionToken)})
-
-	return authResp, sess2
+	return nil
 }

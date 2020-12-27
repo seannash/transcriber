@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"strings"
 
@@ -23,7 +24,9 @@ func HandleRequest(ctx context.Context, events events.S3Event) (string, error) {
 		bucket := record.S3.Bucket.Name
 		tokens := strings.Split(key, "/")
 		loc := "s3://" + bucket + "/" + key
-		rec := types.JobRecord{Job: key, User: tokens[1], JobStatus: "IN_PROGRESS", SourceUrl: loc}
+		tok := strings.Split(key, "/")
+		jobName := transcribe.MakeJobId(tok[1], time.Now().Unix())
+		rec := types.JobRecord{Job: jobName, User: tokens[1], JobStatus: "IN_PROGRESS", SourceURI: loc, ResultBucket: bucket, ResultKey: "done/" + key + ".json"}
 		database.CreateRecord(databaseService, tableName, rec)
 		transcribe.CallTranscribe(transcribeService, rec)
 	}

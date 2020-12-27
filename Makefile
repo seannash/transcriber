@@ -1,5 +1,3 @@
-LAMBDAS=lambda/*
-
 .PHONY: lambda
 lambda:
 	make -C lambda/JobController
@@ -13,4 +11,4 @@ clean:
 	make -C lambda/JobController clean
 	make -C lambda/StartTranscribe clean
 	make -C lambda/TranscriberFinnish clean
-	rm scribe
+	rm -f scribe
