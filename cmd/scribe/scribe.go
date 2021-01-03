@@ -180,12 +180,15 @@ func DoLocal(arg args, config Config) error {
 	defer file.Close()
 	baseFileName := filepath.Base(file.Name())
 
-	key := "todo/" + config.UserName + "/" + baseFileName
+	//key := "todo/" + config.UserName + "/" + baseFileName
+	key := "user/" + config.UserName + "/" + baseFileName
 	loc := cloud.S3Location{
 		Bucket: config.Bucket,
 		Key:    key,
 	}
 	err = cloud.UploadFileToS3(sess, *arg.fileName, loc)
+
+	return err
 
 	transcriber := transcribeservice.New(sess)
 
@@ -193,7 +196,7 @@ func DoLocal(arg args, config Config) error {
 	mediaformat := "mp4"
 	languagecode := "en-US"
 
-	loc2 := "s3://" + config.Bucket + "/todo/" + config.UserName + "/" + baseFileName
+	loc2 := "s3://" + config.Bucket + "/user/" + config.UserName + "/" + baseFileName
 	var media transcribeservice.Media
 	media.MediaFileUri = &loc2
 	outputKey := "done/" + baseFileName + ".json"

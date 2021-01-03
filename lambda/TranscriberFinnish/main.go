@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
 
 	"example.com/transcribe/internal/database"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -25,7 +26,7 @@ var databaseService *dynamodb.DynamoDB
 var tableName string
 
 func main() {
-	tableName = "transcriber"
+	tableName = os.Getenv("TABLE_NAME")
 
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,

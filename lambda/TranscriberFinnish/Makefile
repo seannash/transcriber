@@ -1,10 +1,5 @@
-NAME=$(shell basename $(shell pwd))
-
-all: golang
-	zip ${NAME}.zip ${NAME}
-
-golang:
-	go build .
+all:
+	go build -o $(ARTIFACTS_DIR) .
 
 clean:
-	rm -f ${NAME} *zip
+	rm -Rf bin

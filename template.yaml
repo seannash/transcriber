@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fun Transcribe Project
+Globals:
+  Function:
+    MemorySize: 128
+    Runtime: go1.x
+    Timeout: 5
+
+Resources:
+
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors: "'*'"
+      Auth:
+        DefaultAuthorizer: MyCognitoAuthorizer
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      UsernameAttributes:
+      - email
+      AutoVerifiedAttributes:
+      - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+          RequireLowercase: true
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: true
+
+  UserPoolTokenClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - USER_PASSWORD_AUTH
+  
+  StartTranscribe:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/StartTranscribe/
+      Handler: StartTranscribe
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TranscribeTable
+      Policies:  
+        - AmazonTranscribeFullAccess
+        - AmazonS3FullAccess 
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TranscribeTable
+      Events:
+        FileUploaded:
+          Type: S3
+          Properties:
+            Bucket: !Ref ProjectBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: "user"
+
+  TranscriberFinnish:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/TranscriberFinnish/
+      Handler: StartTranscribe
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TranscribeTable
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TranscribeTable
+      Policies:
+        DynamoDBCrudPolicy:
+          TableName: !Ref TranscribeTable
+      Events:
+        TransrcibeFinnishedEvent:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.transcribe
+              detail-type:
+                - Transcribe Job State Change
+
+  JobController:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/JobController/
+      Handler: JobController
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TranscribeTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TranscribeTable
+        - S3CrudPolicy:
+            BucketName: !Ref ProjectBucket      
+      Events:
+        ListJobs:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: '/job'
+            Method: get
+        PostJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: '/job'
+            Method: post
+        GetJob:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: '/job/{id}'
+            Method: get
+
+  ProjectBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+  ProjectBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ProjectBucket
+      PolicyDocument:
+        Id: ProdAnsiblePolicy
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt [ JobControllerRole, Arn]
+            Action: 's3:*'
+            Resource: !Sub 'arn:aws:s3:::${ProjectBucket}/*'
+
+  TranscribeTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      AttributeDefinitions: 
+        - 
+          AttributeName: "job"
+          AttributeType: "S"
+        - 
+          AttributeName: "user"
+          AttributeType: "S"
+      KeySchema: 
+        -
+          AttributeName: "job"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      GlobalSecondaryIndexes:
+        -
+          IndexName: "user-index"
+          KeySchema:
+            -
+              AttributeName: "user"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: "ALL"
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+
+Outputs:
+  HelloWorldAPI:
+    Description: "API Gateway endpoint URL for Prod environment for First Function"
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/job/"
+  ProjectBucket:
+    Description: "Project Bucket"
+    Value: !Sub "http://${ProjectBucket}.s3-website.${AWS::Region}.amazonaws.com/"
+  UserPoolTokenClient:
+    Description: "Project Bucket"
+    Value: !Sub "${UserPoolTokenClient}"
+  UserPool:
+    Description: "UserPool"
+    Value: !Sub "${UserPool}"

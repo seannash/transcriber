@@ -41,7 +41,7 @@ var (
 var tableName string
 
 func main() {
-	tableName = "transcriber"
+	tableName = os.Getenv("TABLE_NAME")
 	region := os.Getenv("AWS_REGION")
 	awsSession, err := session.NewSession(&aws.Config{
 		Region: aws.String(region)},
@@ -160,7 +160,7 @@ func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (
 
 	resp, err := dynaClient.Query(params)
 	if err != nil {
-		fmt.Printf("ERROR: %v\n", err.Error())
+		fmt.Printf("ERROAR: %v\n", err.Error())
 		return nil, err
 	}
 

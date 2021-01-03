@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"time"
-
+	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -21,10 +22,12 @@ import (
 func HandleRequest(ctx context.Context, events events.S3Event) (string, error) {
 	for _, record := range events.Records {
 		key := record.S3.Object.Key
+		fmt.Println(key)
 		bucket := record.S3.Bucket.Name
 		tokens := strings.Split(key, "/")
 		loc := "s3://" + bucket + "/" + key
 		tok := strings.Split(key, "/")
+		fmt.Println(tok)
 		jobName := transcribe.MakeJobId(tok[1], time.Now().Unix())
 		rec := types.JobRecord{Job: jobName, User: tokens[1], JobStatus: "IN_PROGRESS", SourceURI: loc, ResultBucket: bucket, ResultKey: "done/" + key + ".json"}
 		database.CreateRecord(databaseService, tableName, rec)
@@ -35,11 +38,11 @@ func HandleRequest(ctx context.Context, events events.S3Event) (string, error) {
 
 var databaseService *dynamodb.DynamoDB
 var transcribeService *transcribeservice.TranscribeService
-var tableName string = "transcriber"
+var tableName string
 
 func main() {
 
-	tableName = "transcriber"
+	tableName = os.Getenv("TABLE_NAME")
 
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
