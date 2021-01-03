@@ -25,8 +25,6 @@ Resources:
     Properties:
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: false
-      #UsernameAttributes:
-      #- email
       AutoVerifiedAttributes:
       - email
       UsernameConfiguration: 
@@ -110,23 +108,17 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref ProjectBucket      
       Events:
-        ListJobs:
+        WithId:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
-            Path: '/job'
+            Path: '/transcribe/{user}/{area}/{id}'
             Method: get
-        PostJob:
+        WithNoId:
           Type: Api
           Properties:
             RestApiId: !Ref MyApi
-            Path: '/job'
-            Method: post
-        GetJob:
-          Type: Api
-          Properties:
-            RestApiId: !Ref MyApi
-            Path: '/job/{id}'
+            Path: '/transcribe/{user}/{area}'
             Method: get
 
   ProjectBucket:
@@ -188,12 +180,12 @@ Resources:
     Type: "AWS::IAM::Role"
     Properties:
       Path: "/"
-      #RoleName: "transcriber-api-access"
       AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"cognito-identity.amazonaws.com\"},\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"cognito-identity.amazonaws.com:aud\":\"Transcriber\"}}}]}"
       MaxSessionDuration: 3600
       ManagedPolicyArns: 
         - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
         - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+
 Outputs:
   HelloWorldAPI:
     Description: "API Gateway endpoint URL for Prod environment for First Function"

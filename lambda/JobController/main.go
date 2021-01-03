@@ -77,8 +77,6 @@ func handler(req events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse
 	switch req.HTTPMethod {
 	case "GET":
 		return HandlerGet(req, tableName, dynaClient)
-	case "POST":
-		return HandlerPost(req, tableName, dynaClient)
 	default:
 		return apiResponse(http.StatusMethodNotAllowed, ErrorMethodNotAllowed)
 	}
@@ -94,15 +92,19 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 	userBlob := claims.(map[string]interface{})["cognito:username"]
 	user := userBlob.(string)
 
-	rawJob, found := req.PathParameters["id"]
-	if found {
+	// user, _ := req.PathParameters["user"]
+	area, _ := req.PathParameters["area"]
+	idRaw, idExists := req.PathParameters["id"]
+	var id string
+	if idExists {
+		id, _ = url.QueryUnescape(idRaw)
+	}
+	if area == "job" && idExists {
 		// Single Mode
-		job, err := url.QueryUnescape(rawJob)
-		result, err := GetJob(job, tableName, dynaClient)
+		result, err := GetJob(id, tableName, dynaClient)
 		if err != nil {
 			return apiResponse(http.StatusBadRequest, ErrorBody{aws.String(err.Error())})
 		}
-		//item := new(types.JobRecord)
 		if err != nil {
 			fmt.Println(result)
 			return apiResponse(http.StatusBadRequest, ErrorBody{aws.String(err.Error())})
@@ -111,13 +113,26 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 		resultKey := result.ResultKey
 		signedURI, err := makeSignedURI(s3Service, resultBucket, resultKey)
 		return apiResponse(http.StatusOK, signedURI)
+	} else if area == "job" && !idExists {
+		// List of user's jobs
+		result, err := ListJobs(user, tableName, dynaClient)
+		if err != nil {
+			return apiResponse(http.StatusBadRequest, ErrorBody{aws.String(err.Error())})
+		}
+		return apiResponse(http.StatusOK, result)
+	} else if area == "upload" && idExists {
+		reqo, _ := s3Service.PutObjectRequest(&s3.PutObjectInput{
+			Bucket: aws.String("transcriber"),
+			Key:    aws.String("users/" + user + "/" + "1"),
+		})
+		urlStr, err := reqo.Presign(15 * time.Minute)
+		if err != nil {
+			log.Println("Failed to sign request", err)
+		}
+		return apiResponse(http.StatusOK, urlStr)
 	}
-	// List of user's jobs
-	result, err := ListJobs(user, tableName, dynaClient)
-	if err != nil {
-		return apiResponse(http.StatusBadRequest, ErrorBody{aws.String(err.Error())})
-	}
-	return apiResponse(http.StatusOK, result)
+
+	return apiResponse(http.StatusMethodNotAllowed, ErrorMethodNotAllowed)
 }
 
 func GetJob(job string, tableName string, dynaClient dynamodbiface.DynamoDBAPI) (*types.JobRecord, error) {
@@ -170,28 +185,6 @@ func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (
 	err = dynamodbattribute.UnmarshalListOfMaps(resp.Items, &items)
 
 	return items, nil
-}
-
-func HandlerPost(req events.APIGatewayProxyRequest, tableName string, dynaClient dynamodbiface.DynamoDBAPI) (
-	*events.APIGatewayProxyResponse,
-	error,
-) {
-	p := req.RequestContext.Authorizer // ["claims"]["cognito:username"]
-	claims := p["claims"]
-	userBlob := claims.(map[string]interface{})["cognito:username"]
-	user := userBlob.(string)
-
-	reqo, _ := s3Service.PutObjectRequest(&s3.PutObjectInput{
-		Bucket: aws.String("transcriber"),
-		Key:    aws.String("users/" + user + "/" + "1"),
-	})
-	urlStr, err := reqo.Presign(15 * time.Minute)
-
-	if err != nil {
-		log.Println("Failed to sign request", err)
-	}
-
-	return apiResponse(http.StatusOK, urlStr)
 }
 
 func makeSignedURI(s3Service s3iface.S3API, bucket string, key string) (string, error) {
