@@ -85,10 +85,10 @@ func ListJobs(arg args, config Config) error {
 		UserName:      config.UserName,
 		Password:      config.Password,
 	}
-	authRequestOutput, _, _ := cloud.Login(sess, lparams)
+	authRequestOutput, _, err := cloud.Login(sess, lparams)
+	fmt.Println(authRequestOutput, err)
 	token := *authRequestOutput.AuthenticationResult.IdToken
-	//fmt.Println(authRequestOutput, token)
-	data, err := cloud.GetRequest("https://h3ksw34ggi.execute-api.us-east-1.amazonaws.com/prod/job", token)
+	data, err := cloud.GetRequest("https://z7fyh0rt5a.execute-api.us-east-1.amazonaws.com/prod/job/", token)
 	fmt.Println(string(data), err)
 	return err
 }
@@ -142,6 +142,7 @@ func LoadConfiguration(file string) (Config, error) {
 
 func DoRemote(arg args, config Config) error {
 	fmt.Println("DoRemote")
+
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Region: aws.String(config.Region), Credentials: nil},
 	})
@@ -153,17 +154,37 @@ func DoRemote(arg args, config Config) error {
 		UserName:      config.UserName,
 		Password:      config.Password,
 	}
-	fmt.Println(lparams)
-	_, sess2, _ := cloud.Login(sess, lparams)
-	baseFileName := filepath.Base(*arg.fileName)
-	key := "users/" + config.UserName + "/" + baseFileName
-	loc := cloud.S3Location{
-		Bucket: config.Bucket,
-		Key:    key,
-	}
-	err = cloud.UploadFileToS3(sess2, *arg.fileName, loc)
-
+	authRequestOutput, _, err := cloud.Login(sess, lparams)
+	fmt.Println(authRequestOutput, err)
+	token := *authRequestOutput.AuthenticationResult.IdToken
+	data, err := cloud.PostRequest("https://z7fyh0rt5a.execute-api.us-east-1.amazonaws.com/prod/job/", token)
+	sdata := string(data)
+	fmt.Println("A", sdata, err)
 	return err
+	/*
+		sess, err := session.NewSessionWithOptions(session.Options{
+			Config: aws.Config{Region: aws.String(config.Region), Credentials: nil},
+		})
+		lparams := cloud.LoginParams{
+			Region:        config.Region,
+			ApiKey:        config.ApiKey,
+			CognitoServer: config.CognitoServer,
+			IdentityPool:  config.IdentityPool,
+			UserName:      config.UserName,
+			Password:      config.Password,
+		}
+		fmt.Println(lparams)
+		_, sess2, _ := cloud.Login(sess, lparams)
+		baseFileName := filepath.Base(*arg.fileName)
+		key := "users/" + config.UserName + "/" + baseFileName
+		loc := cloud.S3Location{
+			Bucket: config.Bucket,
+			Key:    key,
+		}
+		err = cloud.UploadFileToS3(sess2, *arg.fileName, loc)
+
+		return err
+	*/
 }
 
 func DoLocal(arg args, config Config) error {

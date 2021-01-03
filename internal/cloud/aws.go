@@ -31,8 +31,10 @@ func Login(sess *session.Session, lparams LoginParams) (*cognitoidentityprovider
 		},
 		ClientId: aws.String(lparams.ApiKey),
 	}
+
 	cip := cognitoidentityprovider.New(sess)
 	authResp, err := cip.InitiateAuth(params)
+	return authResp, nil, err
 	//fmt.Println(authResp, err)
 	svc := cognitoidentity.New(sess)
 	idRes, err := svc.GetId(&cognitoidentity.GetIdInput{

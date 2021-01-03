@@ -25,10 +25,12 @@ Resources:
     Properties:
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: false
-      UsernameAttributes:
-      - email
+      #UsernameAttributes:
+      #- email
       AutoVerifiedAttributes:
       - email
+      UsernameConfiguration: 
+        CaseSensitive: false
       Policies:
         PasswordPolicy:
           MinimumLength: 6
@@ -174,7 +176,24 @@ Resources:
           ProvisionedThroughput:
             ReadCapacityUnits: 1
             WriteCapacityUnits: 1
+  
+  CognitoUserPoolGroup:
+    Type: "AWS::Cognito::UserPoolGroup"
+    Properties:
+      GroupName: "TranscriberAPI"
+      UserPoolId: !Ref UserPool
+      RoleArn: !GetAtt IAMRole.Arn
 
+  IAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/"
+      #RoleName: "transcriber-api-access"
+      AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"cognito-identity.amazonaws.com\"},\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"cognito-identity.amazonaws.com:aud\":\"Transcriber\"}}}]}"
+      MaxSessionDuration: 3600
+      ManagedPolicyArns: 
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+        - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
 Outputs:
   HelloWorldAPI:
     Description: "API Gateway endpoint URL for Prod environment for First Function"
