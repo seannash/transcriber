@@ -39,10 +39,12 @@ var (
 )
 
 var tableName string
+var projectBucket string
 
 func main() {
 	tableName = os.Getenv("TABLE_NAME")
 	region := os.Getenv("AWS_REGION")
+	projectBucket = os.Getenv("PROJECT_BUCKET")
 	awsSession, err := session.NewSession(&aws.Config{
 		Region: aws.String(region)},
 	)
@@ -111,6 +113,7 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 		}
 		resultBucket := result.ResultBucket
 		resultKey := result.ResultKey
+		fmt.Println("Key", result.ResultKey)
 		signedURI, err := makeSignedURI(s3Service, resultBucket, resultKey)
 		return apiResponse(http.StatusOK, signedURI)
 	} else if area == "job" && !idExists {
@@ -122,8 +125,8 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 		return apiResponse(http.StatusOK, result)
 	} else if area == "upload" && idExists {
 		reqo, _ := s3Service.PutObjectRequest(&s3.PutObjectInput{
-			Bucket: aws.String("transcriber"),
-			Key:    aws.String("users/" + user + "/" + "1"),
+			Bucket: aws.String(projectBucket),
+			Key:    aws.String("users/" + user + "/" + id),
 		})
 		urlStr, err := reqo.Presign(15 * time.Minute)
 		if err != nil {
@@ -190,6 +193,22 @@ func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (
 func makeSignedURI(s3Service s3iface.S3API, bucket string, key string) (string, error) {
 
 	reqo, _ := s3Service.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	uri, err := reqo.Presign(15 * time.Minute)
+
+	if err != nil {
+		log.Println("Failed to sign request", err)
+	}
+
+	return uri, err
+
+}
+
+func makeSignedPutURI(s3Service s3iface.S3API, bucket string, key string) (string, error) {
+
+	reqo, _ := s3Service.PutObjectRequest(&s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})

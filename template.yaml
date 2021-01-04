@@ -74,7 +74,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: build/TranscriberFinnish/
-      Handler: StartTranscribe
+      Handler: TranscriberFinnish
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TranscribeTable
@@ -102,6 +102,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TranscribeTable
+          PROJECT_BUCKET: !Ref ProjectBucket
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TranscribeTable

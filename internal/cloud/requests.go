@@ -1,14 +1,13 @@
 package cloud
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,7 +17,7 @@ func GetRequest(url string, token string) ([]byte, error) {
 		log.Fatal("Error reading request. ", err)
 	}
 
-	req.Header.Set("Auth", token)
+	req.Header.Set("Authorization", token)
 	fmt.Println("Request: ", *req)
 	client := &http.Client{Timeout: time.Second * 10}
 
@@ -41,7 +40,7 @@ func PostRequest(url string, token string) ([]byte, error) {
 		log.Fatal("Error reading request. ", err)
 	}
 
-	req.Header.Set("Auth", token)
+	req.Header.Set("Authorization", token)
 
 	client := &http.Client{Timeout: time.Second * 10}
 
@@ -58,47 +57,22 @@ func PostRequest(url string, token string) ([]byte, error) {
 	return body, nil
 }
 
-func newfileUploadRequest(uri string, params map[string]string, paramName, path string) (*http.Request, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-	fi, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	file.Close()
-
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile(paramName, fi.Name())
-	if err != nil {
-		return nil, err
-	}
-	part.Write(fileContents)
-
-	for key, val := range params {
-		_ = writer.WriteField(key, val)
-	}
-	err = writer.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return http.NewRequest("PUT", uri, body)
-}
-
 func SendFile(url string, filename string) error {
-	var extraParams map[string]string
-	request, err := newfileUploadRequest(url, extraParams, "file", filename)
+
+	file, err := os.Open(filename)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+	defer file.Close()
+	bs, err := ioutil.ReadFile(filename)
+
+	//body := new(bytes.Buffer)
+
+	request, _ := http.NewRequest("PUT", url, strings.NewReader(string(bs)))
+	//request.Header.Set("Content-Type", "video/mp4")
+	fmt.Println(request)
 	client := &http.Client{}
+
 	resp, err := client.Do(request)
 	fmt.Println(resp, err)
 	if err != nil && resp != nil && resp.Body != nil {
@@ -125,4 +99,15 @@ func Download(url string, fileout string) error {
 	defer out.Close()
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+func GetString(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	buf := new(strings.Builder)
+	_, err = io.Copy(buf, resp.Body)
+	return buf.String(), err
 }
