@@ -95,7 +95,8 @@ type ErrorBody struct {
 }
 
 func handler(req events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {
-	fmt.Println(req)
+	recBody, _ := json.Marshal(req)
+	log.Print(string(recBody))
 	switch req.HTTPMethod {
 	case "GET":
 		return HandlerGet(req, tableName, dynaClient)
@@ -110,7 +111,7 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 	*events.APIGatewayProxyResponse,
 	error,
 ) {
-	fmt.Println("Identity: ", req.RequestContext)
+	log.Print("Identity: ", req.RequestContext)
 	p := req.RequestContext.Authorizer // ["claims"]["cognito:username"]
 	claims := p["claims"]
 	if claims == nil {

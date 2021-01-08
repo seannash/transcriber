@@ -14,6 +14,7 @@ Resources:
     Properties:
       StageName: prod
       Auth:
+        #DefaultAuthorizer: 'NONE'
         Authorizers:
           MyCognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
@@ -109,9 +110,10 @@ Resources:
       Events:
         WithId:
           Type: Api
-          Auth: !Ref MyCognitoAuthorizer
           Properties:
             RestApiId: !Ref MyApi
+            Auth:
+              Authorizer: MyCognitoAuthorizer
             Path: '/transcribe/{user}/{area}/{id}'
             Method: get
         WithIdPreflight:
@@ -122,8 +124,9 @@ Resources:
             Method: options
         WithNoId:
           Type: Api
-          Auth: !Ref MyCognitoAuthorizer
           Properties:
+            Auth:
+              Authorizer: MyCognitoAuthorizer
             RestApiId: !Ref MyApi
             Path: '/transcribe/{user}/{area}'
             Method: get
