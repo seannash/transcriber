@@ -147,9 +147,6 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 		if err != nil {
 			return apiResponse(http.StatusBadRequest, ErrorBody{aws.String(err.Error())})
 		}
-		if result == nil {
-			return apiResponse(http.StatusOK, "Empty")
-		}
 		return apiResponse(http.StatusOK, result)
 	} else if area == "upload" && idExists {
 		reqo, _ := s3Service.PutObjectRequest(&s3.PutObjectInput{
