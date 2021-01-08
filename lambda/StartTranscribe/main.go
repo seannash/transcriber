@@ -50,7 +50,7 @@ func main() {
 
 	databaseService = dynamodb.New(sess)
 	if databaseService == nil {
-		log.Printf("Unable to create Dynamodb session\n")
+		log.Printf("U nable to create Dynamodb session\n")
 		return
 	}
 

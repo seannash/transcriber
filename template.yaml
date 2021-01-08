@@ -13,9 +13,7 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
-      Cors: "'*'"
       Auth:
-        DefaultAuthorizer: MyCognitoAuthorizer
         Authorizers:
           MyCognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
@@ -111,16 +109,30 @@ Resources:
       Events:
         WithId:
           Type: Api
+          Auth: !Ref MyCognitoAuthorizer
           Properties:
             RestApiId: !Ref MyApi
             Path: '/transcribe/{user}/{area}/{id}'
             Method: get
+        WithIdPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: '/transcribe/{user}/{area}/{id}'
+            Method: options
         WithNoId:
           Type: Api
+          Auth: !Ref MyCognitoAuthorizer
           Properties:
             RestApiId: !Ref MyApi
             Path: '/transcribe/{user}/{area}'
             Method: get
+        WithNoIdPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MyApi
+            Path: '/transcribe/{user}/{area}'
+            Method: options
 
   ProjectBucket:
     Type: AWS::S3::Bucket

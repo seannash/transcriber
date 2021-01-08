@@ -56,12 +56,32 @@ func main() {
 	lambda.Start(handler)
 }
 
+func optionsResponse() (*events.APIGatewayProxyResponse, error) {
+	resp := events.APIGatewayProxyResponse{
+		Headers: map[string]string{
+			"Content-Type":                 "application/json",
+			"Access-Control-Allow-Origin":  "*",
+			"Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
+			"Access-Control-Allow-Headers": "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization"}}
+	resp.StatusCode = 200
+
+	//stringBody, _ := json.Marshal(body)
+	//resp.Body = string(stringBody)
+	return &resp, nil
+
+}
+
 func apiResponse(status int, body interface{}) (*events.APIGatewayProxyResponse, error) {
-	resp := events.APIGatewayProxyResponse{Headers: map[string]string{"Content-Type": "application/json"}}
+	resp := events.APIGatewayProxyResponse{
+		Headers: map[string]string{
+			"Content-Type":                "application/json",
+			"Access-Control-Allow-Origin": "*"}}
 	resp.StatusCode = status
 
-	stringBody, _ := json.Marshal(body)
-	resp.Body = string(stringBody)
+	if body != nil {
+		stringBody, _ := json.Marshal(body)
+		resp.Body = string(stringBody)
+	}
 	return &resp, nil
 }
 
@@ -79,6 +99,8 @@ func handler(req events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse
 	switch req.HTTPMethod {
 	case "GET":
 		return HandlerGet(req, tableName, dynaClient)
+	case "OPTIONS":
+		return optionsResponse()
 	default:
 		return apiResponse(http.StatusMethodNotAllowed, ErrorMethodNotAllowed)
 	}
@@ -91,6 +113,9 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 	fmt.Println("Identity: ", req.RequestContext)
 	p := req.RequestContext.Authorizer // ["claims"]["cognito:username"]
 	claims := p["claims"]
+	if claims == nil {
+		return apiResponse(200, "No claims")
+	}
 	userBlob := claims.(map[string]interface{})["cognito:username"]
 	user := userBlob.(string)
 
@@ -121,6 +146,9 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 		result, err := ListJobs(user, tableName, dynaClient)
 		if err != nil {
 			return apiResponse(http.StatusBadRequest, ErrorBody{aws.String(err.Error())})
+		}
+		if result == nil {
+			return apiResponse(http.StatusOK, "Empty")
 		}
 		return apiResponse(http.StatusOK, result)
 	} else if area == "upload" && idExists {
@@ -185,7 +213,9 @@ func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (
 	fmt.Println(resp)
 
 	items := new([]types.JobRecord)
-	err = dynamodbattribute.UnmarshalListOfMaps(resp.Items, &items)
+	if resp.Items != nil {
+		err = dynamodbattribute.UnmarshalListOfMaps(resp.Items, &items)
+	}
 
 	return items, nil
 }
