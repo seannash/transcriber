@@ -9,8 +9,8 @@ lambda:
 	ARTIFACTS_DIR=../../build/SendEmail/SendEmail make -C lambda/SendEmail
 	go build ./cmd/scribe
 
-deploy:
-	sam deploy
+deploy-serverless:
+	cd deployments/serverless/; sam deploy
 
 .PHONY: clean
 clean:

@@ -51,7 +51,7 @@ Resources:
   StartTranscribe:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: build/StartTranscribe/
+      CodeUri: ../../build/StartTranscribe/
       Handler: StartTranscribe
       Environment:
         Variables:
@@ -76,7 +76,7 @@ Resources:
   TranscriberFinnish:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: build/TranscriberFinnish/
+      CodeUri: ../../build/TranscriberFinnish/
       Handler: TranscriberFinnish
       Policies:
         - DynamoDBCrudPolicy:
@@ -100,7 +100,7 @@ Resources:
   JobController:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: build/JobController/
+      CodeUri: ../../build/JobController/
       Handler: JobController
       Environment:
         Variables:
@@ -209,7 +209,7 @@ Resources:
   SendEmail:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: build/SendEmail/
+      CodeUri: ../../build/SendEmail/
       Handler: SendEmail
       Policies:  
         - AmazonTranscribeFullAccess
