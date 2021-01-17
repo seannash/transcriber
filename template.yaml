@@ -7,6 +7,11 @@ Globals:
     Runtime: go1.x
     Timeout: 5
 
+Parameters:
+  SendingEmail:
+    Type: String
+    Description: Email that sends the notification 
+
 Resources:
 
   MyApi:
@@ -14,7 +19,6 @@ Resources:
     Properties:
       StageName: prod
       Auth:
-        #DefaultAuthorizer: 'NONE'
         Authorizers:
           MyCognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
@@ -77,12 +81,12 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TranscribeTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt MySqsQueue.QueueName
       Environment:
         Variables:
           TABLE_NAME: !Ref TranscribeTable
-      Policies:
-        DynamoDBCrudPolicy:
-          TableName: !Ref TranscribeTable
+          EMAIL_QUEUE_URL: !Ref MySqsQueue
       Events:
         TransrcibeFinnishedEvent:
           Type: EventBridgeRule
@@ -202,7 +206,39 @@ Resources:
         - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
         - "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
 
+  SendEmail:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/SendEmail/
+      Handler: SendEmail
+      Policies:  
+        - AmazonTranscribeFullAccess
+        - SESCrudPolicy:
+            IdentityName: !Ref SendingEmail
+        - Statement:
+            Action:
+            - cognito-idp:AdminGetUser
+            Resource: !GetAtt UserPool.Arn
+            Effect: Allow
+      Environment:
+        Variables:
+          EMAIL_USER: !Ref SendingEmail
+          USER_POOL: !Ref UserPool
+      Events:
+        MySQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt MySqsQueue.Arn
+            BatchSize: 10
+
+  MySqsQueue:
+    Type: AWS::SQS::Queue
+  
 Outputs:
+  SendingEmail:
+    Description: "SendingEmail"
+    Value: !Sub "${SendingEmail}"
+
   HelloWorldAPI:
     Description: "API Gateway endpoint URL for Prod environment for First Function"
     Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/job/"
@@ -215,3 +251,6 @@ Outputs:
   UserPool:
     Description: "UserPool"
     Value: !Sub "${UserPool}"
+
+Metadata:
+  BuildMethod: makefile

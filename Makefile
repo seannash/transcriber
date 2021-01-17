@@ -6,6 +6,7 @@ lambda:
 	ARTIFACTS_DIR=../../build/JobController/JobController make -C lambda/JobController
 	ARTIFACTS_DIR=../../build/StartTranscribe/StartTranscribe make -C lambda/StartTranscribe
 	ARTIFACTS_DIR=../../build/TranscriberFinnish/TranscriberFinnish make -C lambda/TranscriberFinnish
+	ARTIFACTS_DIR=../../build/SendEmail/SendEmail make -C lambda/SendEmail
 	go build ./cmd/scribe
 
 deploy:

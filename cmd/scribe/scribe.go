@@ -70,7 +70,6 @@ func ListJobs(arg args, config Config) error {
 		Password: config.Password,
 	}
 	authRequestOutput, err := cloud.Login(sess, lparams)
-	fmt.Println(authRequestOutput, err)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	url := config.Api + "/transcribe/" + config.UserName + "/job"
 	data, err := cloud.GetRequest(url, token)
@@ -121,8 +120,6 @@ func LoadConfiguration(file string) (Config, error) {
 }
 
 func DoRemote(arg args, config Config) error {
-	fmt.Println("DoRemote")
-
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
@@ -132,18 +129,14 @@ func DoRemote(arg args, config Config) error {
 		Password: config.Password,
 	}
 	authRequestOutput, err := cloud.Login(sess, lparams)
-	fmt.Println(authRequestOutput, err)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	user := config.UserName
 	file := *arg.fileName
 	api := config.Api
 	url := api + "/transcribe/" + user + "/upload/" + file
-	fmt.Println(url)
 	data, err := cloud.GetRequest(url, token)
 	var reqURL string
 	json.Unmarshal(data, &reqURL)
-	fmt.Println(reqURL)
 	err = cloud.SendFile(reqURL, file)
-	fmt.Println(err)
 	return err
 }

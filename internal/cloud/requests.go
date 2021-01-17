@@ -18,7 +18,6 @@ func GetRequest(url string, token string) ([]byte, error) {
 	}
 
 	req.Header.Set("Authorization", token)
-	fmt.Println("Request: ", *req)
 	client := &http.Client{Timeout: time.Second * 10}
 
 	resp, err := client.Do(req)
@@ -69,12 +68,9 @@ func SendFile(url string, filename string) error {
 	//body := new(bytes.Buffer)
 
 	request, _ := http.NewRequest("PUT", url, strings.NewReader(string(bs)))
-	//request.Header.Set("Content-Type", "video/mp4")
-	fmt.Println(request)
 	client := &http.Client{}
 
 	resp, err := client.Do(request)
-	fmt.Println(resp, err)
 	if err != nil && resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
