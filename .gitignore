@@ -1,0 +1,4 @@
+build
+samconfig.toml
+.aws-sam
+.cred.swp
