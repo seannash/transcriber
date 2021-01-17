@@ -2,3 +2,5 @@ build
 samconfig.toml
 .aws-sam
 .cred.swp
+*.mp4
+configuration.json
