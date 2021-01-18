@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"example.com/transcribe/internal/types"
+	"example.com/transcribe/internal/transcribe"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -164,7 +164,7 @@ func HandlerGet(req events.APIGatewayProxyRequest, tableName string, dynaClient 
 	return apiResponse(http.StatusMethodNotAllowed, ErrorMethodNotAllowed)
 }
 
-func GetJob(job string, tableName string, dynaClient dynamodbiface.DynamoDBAPI) (*types.JobRecord, error) {
+func GetJob(job string, tableName string, dynaClient dynamodbiface.DynamoDBAPI) (*transcribe.JobRecord, error) {
 	fmt.Println("GetJob")
 	result, err := dynaClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
@@ -174,7 +174,7 @@ func GetJob(job string, tableName string, dynaClient dynamodbiface.DynamoDBAPI) 
 			},
 		},
 	})
-	item := new(types.JobRecord)
+	item := new(transcribe.JobRecord)
 	if err != nil {
 		fmt.Println(result)
 		return item, errors.New("failed")
@@ -186,7 +186,7 @@ func GetJob(job string, tableName string, dynaClient dynamodbiface.DynamoDBAPI) 
 	return item, nil
 }
 
-func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (*[]types.JobRecord, error) {
+func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (*[]transcribe.JobRecord, error) {
 	fmt.Println("ListJob", user)
 	params := &dynamodb.QueryInput{
 		TableName:              aws.String(table),
@@ -210,7 +210,7 @@ func ListJobs(user string, table string, dynaClient dynamodbiface.DynamoDBAPI) (
 
 	fmt.Println(resp)
 
-	items := new([]types.JobRecord)
+	items := new([]transcribe.JobRecord)
 	if resp.Items != nil {
 		err = dynamodbattribute.UnmarshalListOfMaps(resp.Items, &items)
 	}

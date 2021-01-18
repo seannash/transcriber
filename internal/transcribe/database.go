@@ -1,17 +1,16 @@
-package database
+package transcribe
 
 import (
 	"errors"
 	"fmt"
 
-	"example.com/transcribe/internal/types"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 )
 
-func CreateRecord(dbSvc *dynamodb.DynamoDB, table string, record types.JobRecord) error {
+func CreateDatabaseRecord(dbSvc dynamodbiface.DynamoDBAPI, table string, record JobRecord) error {
 	av, err := dynamodbattribute.MarshalMap(record)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -31,7 +30,7 @@ func CreateRecord(dbSvc *dynamodb.DynamoDB, table string, record types.JobRecord
 	return err
 }
 
-func GetRecord(svc *dynamodb.DynamoDB, table string, job string) (types.JobRecord, error) {
+func GetDatabaseRecord(svc *dynamodb.DynamoDB, table string, job string) (JobRecord, error) {
 	const tableName = "transcriber"
 
 	result, err := svc.GetItem(&dynamodb.GetItemInput{
@@ -42,7 +41,7 @@ func GetRecord(svc *dynamodb.DynamoDB, table string, job string) (types.JobRecor
 			},
 		},
 	})
-	var rec types.JobRecord
+	var rec JobRecord
 	if err != nil {
 		fmt.Println(result)
 	}
@@ -59,7 +58,7 @@ func GetRecord(svc *dynamodb.DynamoDB, table string, job string) (types.JobRecor
 	return rec, err
 }
 
-func SetStatus(dbService dynamodbiface.DynamoDBAPI, table string, job string, status string) error {
+func SetDatabaseRecordStatus(dbService dynamodbiface.DynamoDBAPI, table string, job string, status string) error {
 	input := &dynamodb.UpdateItemInput{
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":s": {
