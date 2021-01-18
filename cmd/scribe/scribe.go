@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"example.com/transcribe/internal/cloud"
+	"example.com/transcribe/internal/transcribe"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 )
@@ -64,15 +64,15 @@ func ListJobs(arg args, config Config) error {
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
-	lparams := cloud.LoginParams{
+	lparams := transcribe.LoginParams{
 		ApiKey:   config.ApiKey,
 		UserName: config.UserName,
 		Password: config.Password,
 	}
-	authRequestOutput, err := cloud.Login(sess, lparams)
+	authRequestOutput, err := transcribe.Login(sess, lparams)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	url := config.Api + "/transcribe/" + config.UserName + "/job"
-	data, err := cloud.GetRequest(url, token)
+	data, err := transcribe.GetRequest(url, token)
 	fmt.Println(string(data), err)
 	return err
 }
@@ -81,20 +81,20 @@ func GetJob(arg args, config Config) error {
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
-	lparams := cloud.LoginParams{
+	lparams := transcribe.LoginParams{
 		ApiKey:   config.ApiKey,
 		UserName: config.UserName,
 		Password: config.Password,
 	}
-	authRequestOutput, _ := cloud.Login(sess, lparams)
+	authRequestOutput, _ := transcribe.Login(sess, lparams)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	uri := config.Api + "/transcribe/" + config.UserName + "/job/" + *arg.job
 	fmt.Println(uri)
-	data, err := cloud.GetRequest(uri, token)
+	data, err := transcribe.GetRequest(uri, token)
 	fmt.Println(string(data), err)
 	var url string
 	json.Unmarshal(data, &url)
-	json, _ := cloud.GetString(url)
+	json, _ := transcribe.GetString(url)
 	fmt.Println(json)
 	return err
 }
@@ -123,20 +123,20 @@ func DoRemote(arg args, config Config) error {
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
-	lparams := cloud.LoginParams{
+	lparams := transcribe.LoginParams{
 		ApiKey:   config.ApiKey,
 		UserName: config.UserName,
 		Password: config.Password,
 	}
-	authRequestOutput, err := cloud.Login(sess, lparams)
+	authRequestOutput, err := transcribe.Login(sess, lparams)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	user := config.UserName
 	file := *arg.fileName
 	api := config.Api
 	url := api + "/transcribe/" + user + "/upload/" + file
-	data, err := cloud.GetRequest(url, token)
+	data, err := transcribe.GetRequest(url, token)
 	var reqURL string
 	json.Unmarshal(data, &reqURL)
-	err = cloud.SendFile(reqURL, file)
+	err = transcribe.SendFile(reqURL, file)
 	return err
 }
