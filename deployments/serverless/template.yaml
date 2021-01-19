@@ -51,8 +51,8 @@ Resources:
   StartTranscribe:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../build/StartTranscribe/
-      Handler: StartTranscribe
+      CodeUri: ../../build/StartTranscribeFromS3Event/
+      Handler: StartTranscribeFromS3Event
       Environment:
         Variables:
           TABLE_NAME: !Ref TranscribeTable
@@ -100,8 +100,8 @@ Resources:
   JobController:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../build/JobController/
-      Handler: JobController
+      CodeUri: ../../build/JobControllerProxy/
+      Handler: JobControllerProxy
       Environment:
         Variables:
           TABLE_NAME: !Ref TranscribeTable
