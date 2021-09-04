@@ -4,3 +4,4 @@ samconfig.toml
 .cred.swp
 *.mp4
 configuration.json
+cdk/node_modules
