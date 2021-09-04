@@ -4,11 +4,18 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/http/httputil"
 	"os"
+	"strings"
+	"time"
 
-	"example.com/transcribe/internal/transcribe"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 )
 
 type args struct {
@@ -60,43 +67,102 @@ func main() {
 	os.Exit(0)
 }
 
+type LoginParams struct {
+	ApiKey   string
+	UserName string
+	Password string
+}
+
+func Login(sess *session.Session, lparams LoginParams) (*cognitoidentityprovider.InitiateAuthOutput, error) {
+
+	params := &cognitoidentityprovider.InitiateAuthInput{
+		AuthFlow: aws.String("USER_PASSWORD_AUTH"),
+		AuthParameters: map[string]*string{
+			"USERNAME": aws.String(lparams.UserName),
+			"PASSWORD": aws.String(lparams.Password),
+		},
+		ClientId: aws.String(lparams.ApiKey),
+	}
+
+	cip := cognitoidentityprovider.New(sess)
+	authResp, err := cip.InitiateAuth(params)
+	return authResp, err
+}
+
 func ListJobs(arg args, config Config) error {
-	sess, err := session.NewSessionWithOptions(session.Options{
+	sess, _ := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
-	lparams := transcribe.LoginParams{
+	lparams := LoginParams{
 		ApiKey:   config.ApiKey,
 		UserName: config.UserName,
 		Password: config.Password,
 	}
-	authRequestOutput, err := transcribe.Login(sess, lparams)
+	authRequestOutput, _ := Login(sess, lparams)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	url := config.Api + "/transcribe/" + config.UserName + "/job"
-	data, err := transcribe.GetRequest(url, token)
+	data, err := GetRequest(url, token)
 	fmt.Println(string(data), err)
 	return err
 }
 
 func GetJob(arg args, config Config) error {
-	sess, err := session.NewSessionWithOptions(session.Options{
+	sess, _ := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
-	lparams := transcribe.LoginParams{
+	lparams := LoginParams{
 		ApiKey:   config.ApiKey,
 		UserName: config.UserName,
 		Password: config.Password,
 	}
-	authRequestOutput, _ := transcribe.Login(sess, lparams)
+	authRequestOutput, _ := Login(sess, lparams)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	uri := config.Api + "/transcribe/" + config.UserName + "/job/" + *arg.job
 	fmt.Println(uri)
-	data, err := transcribe.GetRequest(uri, token)
+	data, err := GetRequest(uri, token)
 	fmt.Println(string(data), err)
 	var url string
 	json.Unmarshal(data, &url)
-	json, _ := transcribe.GetString(url)
+	json, _ := GetString(url)
 	fmt.Println(json)
 	return err
+}
+
+func GetRequest(url string, token string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal("Error reading request. ", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	//req.Header.Set("Authorization", token)
+	client := &http.Client{Timeout: time.Second * 10}
+	requestDump, err := httputil.DumpRequest(req, true)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(requestDump))
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal("Error reading response. ", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal("Error reading body. ", err)
+	}
+	return body, nil
+}
+
+func GetString(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	buf := new(strings.Builder)
+	_, err = io.Copy(buf, resp.Body)
+	return buf.String(), err
 }
 
 type Config struct {
@@ -120,23 +186,49 @@ func LoadConfiguration(file string) (Config, error) {
 }
 
 func DoRemote(arg args, config Config) error {
-	sess, err := session.NewSessionWithOptions(session.Options{
+	sess, _ := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{Credentials: nil},
 	})
-	lparams := transcribe.LoginParams{
+	lparams := LoginParams{
 		ApiKey:   config.ApiKey,
 		UserName: config.UserName,
 		Password: config.Password,
 	}
-	authRequestOutput, err := transcribe.Login(sess, lparams)
+	authRequestOutput, _ := Login(sess, lparams)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	user := config.UserName
 	file := *arg.fileName
 	api := config.Api
 	url := api + "/transcribe/" + user + "/upload/" + file
-	data, err := transcribe.GetRequest(url, token)
+	data, _ := GetRequest(url, token)
 	var reqURL string
 	json.Unmarshal(data, &reqURL)
-	err = transcribe.SendFile(reqURL, file)
+	err := SendFile(reqURL, file)
+	return err
+}
+
+func SendFile(url string, filename string) error {
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	bs, _ := ioutil.ReadFile(filename)
+
+	//body := new(bytes.Buffer)
+
+	request, _ := http.NewRequest("PUT", url, strings.NewReader(string(bs)))
+	client := &http.Client{}
+
+	resp, err := client.Do(request)
+	if err != nil && resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		fmt.Println("Response: ", string(body), err)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
 	return err
 }
