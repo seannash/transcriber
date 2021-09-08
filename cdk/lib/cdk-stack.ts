@@ -9,73 +9,46 @@ import * as events from '@aws-cdk/aws-events'
 import * as targets from '@aws-cdk/aws-events-targets'
 import * as sqs from '@aws-cdk/aws-sqs'
 import * as ddb from '@aws-cdk/aws-dynamodb'
+import * as cognito from '@aws-cdk/aws-cognito'
+import { UserPoolClient } from '@aws-cdk/aws-cognito'
 
 export class TranscriberStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-    
-    const vpc = new ec2.Vpc(this, 'VPC', {
-      maxAzs: 3 // Default is all AZs in region
-    });
 
-    const cluster = new ecs.Cluster(this, "MyCluster", {
-      vpc: vpc
-    });
-
-    // Create a load-balanced Fargate service and make it public
-    /*
-    new ecsPatterns.ApplicationLoadBalancedFargateService(this, "MyFargateService", {
-      cluster: cluster, // Required
-      cpu: 512, // Default is 256
-      desiredCount: 6, // Default is 1
-      taskImageOptions: {
-        image: ecs.ContainerImage.fromAsset('..', {
-          file: 'docker/frontend/Dockerfile',
-          exclude: [ 'build', 'cdk' ]
-        })
+    const userPool = new cognito.UserPool(this, 'UserPool', {
+      autoVerify: {
+        email: true
       },
-      memoryLimitMiB: 2048, // Default is 512
-      publicLoadBalancer: true // Default is false
-    });
-*/
+      userPoolName: 'TranscriberUserPool',
+      signInCaseSensitive: true,
+      passwordPolicy: {
+        minLength: 6,
+        requireLowercase: true,
+        requireDigits: false,
+        requireSymbols: false,
+        requireUppercase: true
+      }
+    })
 
-/*
- TranscribeTable:
-    Type: "AWS::DynamoDB::Table"
-    Properties:
-      AttributeDefinitions: 
-        - 
-          AttributeName: "job"
-          AttributeType: "S"
-        - 
-          AttributeName: "user"
-          AttributeType: "S"
-      KeySchema: 
-        -
-          AttributeName: "job"
-          KeyType: "HASH"
-      ProvisionedThroughput:
-        ReadCapacityUnits: 1
-        WriteCapacityUnits: 1
-      GlobalSecondaryIndexes:
-        -
-          IndexName: "user-index"
-          KeySchema:
-            -
-              AttributeName: "user"
-              KeyType: "HASH"
-          Projection:
-            ProjectionType: "ALL"
-          ProvisionedThroughput:
-            ReadCapacityUnits: 1
-            WriteCapacityUnits: 1
-            */
+    const userPoolClient = new UserPoolClient(this, 'TranscriberUserPoolClient', {
+      userPool: userPool,
+      generateSecret: false,
+      authFlows: {
+        userPassword: true
+      }
+    }) 
 
+    const userPoolGroup = new cognito.CfnUserPoolGroup(this, 'TranscriberAPI', {
+      userPoolId: userPool.userPoolId,
+      groupName: 'jo',
+      
+    })
+    
     const table = new ddb.Table(this, 'Job', {
       billingMode: ddb.BillingMode.PROVISIONED,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      partitionKey: {name: 'job', type: ddb.AttributeType.STRING},
-      //sortKey: {name: 'createdAt', type: ddb.AttributeType.NUMBER},      
+      partitionKey: {name: 'job', type: ddb.AttributeType.STRING}, 
     })
 
     table.addGlobalSecondaryIndex({
@@ -83,12 +56,41 @@ export class TranscriberStack extends cdk.Stack {
       partitionKey:  {name: 'user', type: ddb.AttributeType.STRING},
       sortKey: {name: 'job', type: ddb.AttributeType.STRING},
     })
-      
-    const queue = new sqs.Queue(this, 'EmailQueue');
+    const vpc = new ec2.Vpc(this, 'VPC', {
+      maxAzs: 3 // Default is all AZs in region
+    });
 
     const bucket = new s3.Bucket(this, 'MyFirstBucket', {
       versioned: true
     });
+    
+    const cluster = new ecs.Cluster(this, "MyCluster", {
+    //  vpc: vpc
+    });
+    
+
+    const fargateServer = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "MyFargateService", {
+      cluster: cluster, // Required
+      cpu: 512, // Default is 256
+      desiredCount: 1, // Default is 1
+      taskImageOptions: {
+        environment: {
+          TABLE_NAME: table.tableArn,
+          PROJECT_BUCKET: bucket.bucketArn
+        },
+        image: ecs.ContainerImage.fromAsset('..', {
+          file: 'docker/frontend/Dockerfile',
+          exclude: [ 'build', 'cdk' ],
+        })
+      },
+      memoryLimitMiB: 2048, // Default is 512
+      publicLoadBalancer: true // Default is false
+    });
+
+      
+    const queue = new sqs.Queue(this, 'EmailQueue');
+
+
 
     const sendEmailLambda = new lambda.GoFunction(this, 'SendEmailLambda', {
       entry: '../cmd/SendEmailLambda/',
@@ -114,14 +116,15 @@ export class TranscriberStack extends cdk.Stack {
     startTranscribeFromS3Event.addEventSource(s3PutEventSource);
 
     const sendingEmail = "sean.c.nash@gmail.com"
-    var userPool =""
+
     const transcriberFinish = new lambda.GoFunction(this, 'TranscriberFinish', {
       entry: '../cmd/TranscriberFinishLambda/',
       environment: {
         'EMAIL_USER': sendingEmail,
-        'USER_POOL': userPool
+        'USER_POOL': userPool.userPoolArn
       },
     })
+  
     const finishRule = new events.Rule(this, 'FinishRule', {
       ruleName: 'FinishRule',
       eventPattern: {
