@@ -58,6 +58,8 @@ type DdbPutItem interface {
 }
 
 func CreateDatabaseRecord(dbSvc DdbPutItem, table string, record JobRecord) error {
+	fmt.Println("Table: ", table)
+	fmt.Println("RRecord: ", record)
 	av, err := dynamodbattribute.MarshalMap(record)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -68,6 +70,7 @@ func CreateDatabaseRecord(dbSvc DdbPutItem, table string, record JobRecord) erro
 		Item:      av,
 		TableName: aws.String(table),
 	}
+	fmt.Println("Input: ", input)
 
 	_, err = dbSvc.PutItem(input)
 	if err != nil {
@@ -91,6 +94,7 @@ func MakeJobId(base string, num int64) string {
 func (lc LambdaContext) HandleRequest(ctx context.Context, events events.S3Event) error {
 	var err error
 	for _, record := range events.Records {
+		fmt.Println("record: ", record)
 		key := record.S3.Object.Key
 		bucket := record.S3.Bucket.Name
 		tokens := strings.Split(key, "/")

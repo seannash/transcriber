@@ -27,11 +27,13 @@ type SqsSendMessage interface {
 
 func SendMessageToSqs(svc SqsSendMessage, queueUrl string, msg EmailMessage) error {
 	bytes, err := json.Marshal(msg)
+	fmt.Println("Snending To Sqs: ", queueUrl, msg)
 	if err == nil {
-		_, err := svc.SendMessage(&sqs.SendMessageInput{
+		out, err := svc.SendMessage(&sqs.SendMessageInput{
 			MessageBody: aws.String(string(bytes)),
 			QueueUrl:    aws.String(queueUrl),
 		})
+		fmt.Println(out)
 		if err != nil {
 			fmt.Println("Unable to send message to ", msg.To, " with body: ", msg.Body, "\n", err)
 		}

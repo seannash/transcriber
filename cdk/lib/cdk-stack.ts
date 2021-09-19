@@ -11,6 +11,11 @@ import * as sqs from '@aws-cdk/aws-sqs'
 import * as ddb from '@aws-cdk/aws-dynamodb'
 import * as cognito from '@aws-cdk/aws-cognito'
 import { UserPoolClient } from '@aws-cdk/aws-cognito'
+import { ManagedPolicy, PolicyStatement, Effect} from '@aws-cdk/aws-iam'
+import { Queue } from '@aws-cdk/aws-sqs'
+import { AwsLogDriver } from '@aws-cdk/aws-ecs'
+import { removeAllListeners } from 'process'
+import { countResources } from '@aws-cdk/assert'
 
 export class TranscriberStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
@@ -38,12 +43,6 @@ export class TranscriberStack extends cdk.Stack {
         userPassword: true
       }
     }) 
-
-    const userPoolGroup = new cognito.CfnUserPoolGroup(this, 'TranscriberAPI', {
-      userPoolId: userPool.userPoolId,
-      groupName: 'jo',
-      
-    })
     
     const table = new ddb.Table(this, 'Job', {
       billingMode: ddb.BillingMode.PROVISIONED,
@@ -56,45 +55,64 @@ export class TranscriberStack extends cdk.Stack {
       partitionKey:  {name: 'user', type: ddb.AttributeType.STRING},
       sortKey: {name: 'job', type: ddb.AttributeType.STRING},
     })
-    const vpc = new ec2.Vpc(this, 'VPC', {
-      maxAzs: 3 // Default is all AZs in region
-    });
 
-    const bucket = new s3.Bucket(this, 'MyFirstBucket', {
-      versioned: true
-    });
-    
-    const cluster = new ecs.Cluster(this, "MyCluster", {
-    //  vpc: vpc
+    const bucket = new s3.Bucket(this, 'TranscribeBucket', {
+      versioned: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY
     });
     
 
-    const fargateServer = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "MyFargateService", {
+
+    const fargateServer = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "TranscribeFrontend", {
       cluster: cluster, // Required
-      cpu: 512, // Default is 256
-      desiredCount: 1, // Default is 1
+      cpu: 512,
+      desiredCount: 1,
+      
       taskImageOptions: {
+        containerPort: 8080,
         environment: {
-          TABLE_NAME: table.tableArn,
-          PROJECT_BUCKET: bucket.bucketArn
+          TABLE_NAME: table.tableName,
+          PROJECT_BUCKET: bucket.bucketName
         },
         image: ecs.ContainerImage.fromAsset('..', {
           file: 'docker/frontend/Dockerfile',
           exclude: [ 'build', 'cdk' ],
-        })
+        }),
       },
-      memoryLimitMiB: 2048, // Default is 512
-      publicLoadBalancer: true // Default is false
+  
+      memoryLimitMiB: 2048,
+      publicLoadBalancer: true,
+      
     });
 
-      
-    const queue = new sqs.Queue(this, 'EmailQueue');
+    fargateServer.targetGroup.configureHealthCheck({path: "/ping"})
 
+    bucket.grantReadWrite(fargateServer.taskDefinition.taskRole)
+    table.grantFullAccess(fargateServer.taskDefinition.taskRole)
 
+    
+
+    const sendingEmail = "sean.c.nash@gmail.com"
 
     const sendEmailLambda = new lambda.GoFunction(this, 'SendEmailLambda', {
       entry: '../cmd/SendEmailLambda/',
+      environment: {
+        SENDING_EMAIL: sendingEmail,
+        USER_POOL: userPool.userPoolId
+      }
     })
+    sendEmailLambda.addToRolePolicy(new PolicyStatement({
+      actions: ['ses:SendEmail', 'SES:SendRawEmail'],
+      resources: ['*'],
+      effect: Effect.ALLOW,
+    }));
+    sendEmailLambda.addToRolePolicy(new PolicyStatement({
+      actions: ['cognito-idp:AdminGetUser'],
+      resources: [userPool.userPoolArn],
+      effect: Effect.ALLOW,
+    }));
+    
+  
     sendEmailLambda.addEventSource(new lambdaEventSources.SqsEventSource(queue, {
       batchSize: 10, // default
       maxBatchingWindow: cdk.Duration.minutes(1),
@@ -102,6 +120,9 @@ export class TranscriberStack extends cdk.Stack {
 
     const startTranscribeFromS3Event = new lambda.GoFunction(this, 'StartTranscribeFromS3Event', {
       entry: '../cmd/StartTranscribeFromS3EventLambda/',
+      environment: {
+        TABLE_NAME: table.tableName
+      }
     })
     const s3PutEventSource = new lambdaEventSources.S3EventSource(bucket, {
       events: [
@@ -114,17 +135,22 @@ export class TranscriberStack extends cdk.Stack {
       ]
     });
     startTranscribeFromS3Event.addEventSource(s3PutEventSource);
-
-    const sendingEmail = "sean.c.nash@gmail.com"
+    table.grantFullAccess(startTranscribeFromS3Event)
+    bucket.grantReadWrite(startTranscribeFromS3Event)
+    startTranscribeFromS3Event.role?.addManagedPolicy(ManagedPolicy.fromAwsManagedPolicyName('AmazonTranscribeFullAccess'))
 
     const transcriberFinish = new lambda.GoFunction(this, 'TranscriberFinish', {
       entry: '../cmd/TranscriberFinishLambda/',
       environment: {
         'EMAIL_USER': sendingEmail,
-        'USER_POOL': userPool.userPoolArn
+        'USER_POOL': userPool.userPoolArn,
+        'TABLE_NAME': table.tableName,
+        'EMAIL_QUEUE_URL': queue.queueUrl
       },
     })
-  
+    table.grantReadWriteData(transcriberFinish)
+    queue.grantSendMessages(transcriberFinish)
+
     const finishRule = new events.Rule(this, 'FinishRule', {
       ruleName: 'FinishRule',
       eventPattern: {

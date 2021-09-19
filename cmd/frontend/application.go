@@ -16,15 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/lestrrat-go/jwx/jwk"
 
 	"github.com/gorilla/mux"
-	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/urfave/negroni"
-
 	//"github.com/dgrijalva/jwt-go"
-
-	jwtmiddleware "github.com/auth0/go-jwt-middleware"
-	"github.com/form3tech-oss/jwt-go"
 	//"github.com/dgrijalva/jwt-go"
 	//"github.com/gorilla/mux"
 	//"github.com/lestrrat-go/jwx/jwk"
@@ -49,53 +45,64 @@ func main() {
 	g_s3 = s3.New(g_session)
 	g_projectBucket = os.Getenv("PROJECT_BUCKET")
 	fmt.Println("Project Bucket: ", g_projectBucket)
-	g_projectTable = os.Getenv("PROJECT_TABLE")
+	g_projectTable = os.Getenv("TABLE_NAME")
 	fmt.Println("Project Table: ", g_projectTable)
 
 	r := mux.NewRouter()
+	r.HandleFunc("/ping", PingHandler)
+	//sr := r.PathPrefix("/transcribe").Subrouter()
 	r.HandleFunc("/transcribe/{user}/job", ListJobsHandler)
 	r.HandleFunc("/transcribe/{user}/job/{id}", GetJobUriHandler)
-	r.HandleFunc("/transcribe/{user}/upload", GetUploadUriHandler)
+	r.HandleFunc("/transcribe/{user}/upload/{id}", GetUploadUriHandler)
 
-	keysUrl := "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EkYgDQt5n/.well-known/jwks.json"
+	keysUrl := "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_gqhcPGBgB/.well-known/jwks.json"
 	//ctx, _ := context.WithTimeout(context.Background(), time.Minute)
 	//jwks := jwk.NewAutoRefresh(ctx)
-	keySet, err := jwk.Fetch(keysUrl)
-	fmt.Println(err)
-	mw := jwtmiddleware.New(jwtmiddleware.Options{
-		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-			fmt.Println("Hi")
-			//if _, ok := token.Method.(*jwt.SigningMethodRS256); !ok {
-			//	return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
-			//}
-			kid, ok := token.Header["kid"].(string)
-			if !ok {
-				return nil, errors.New("kid header not found")
-			}
-			keys := keySet.LookupKeyID(kid)
-			if len(keys) == 0 {
-				return nil, fmt.Errorf("key %v not found", kid)
-			}
-			var raw interface{}
-			err := keys[0].Raw(&raw)
-			fmt.Println("err=", err)
-			fmt.Println("raw=", raw)
-			return raw, err
+	keySet, _ := jwk.Fetch(keysUrl)
+	fmt.Println(keySet)
+	/*
+		mw := jwtmiddleware.New(jwtmiddleware.Options{
+			ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
+				fmt.Println("Hi")
+				//if _, ok := token.Method.(*jwt.SigningMethodRS256); !ok {
+				//	return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+				//}
+				kid, ok := token.Header["kid"].(string)
+				if !ok {
+					return nil, errors.New("kid header not found")
+				}
+				keys := keySet.LookupKeyID(kid)
+				if len(keys) == 0 {
+					return nil, fmt.Errorf("key %v not found", kid)
+				}
+				var raw interface{}
+				err := keys[0].Raw(&raw)
+				fmt.Println("err=", err)
+				fmt.Println("raw=", raw)
+				return raw, err
 
-		},
-		SigningMethod: jwt.SigningMethodRS256,
-	})
-
-	an := negroni.New(negroni.HandlerFunc(mw.HandlerWithNext), negroni.Wrap(r))
+			},
+			SigningMethod: jwt.SigningMethodRS256,
+		})
+	*/
+	//an := negroni.New(negroni.HandlerFunc(mw.HandlerWithNext), negroni.Wrap(r))
 	//r.PathPrefix("/").Handler(an)
+	//r.PathPrefix("/transcribe").Handler(negroni.New(
+	//	negroni.HandlerFunc(mw.HandlerWithNext),
+	//	negroni.Wrap(sr),
+	//))
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "5000"
+		port = "8080"
 	}
 	n := negroni.Classic()
-	n.UseHandler(an)
+	n.UseHandler(r)
 	n.Run(":" + port)
+}
+
+func PingHandler(w http.ResponseWriter, r *http.Request) {
+	WriteResponse(w, "", nil)
 }
 
 func ListJobsHandler(w http.ResponseWriter, r *http.Request) {
@@ -185,10 +192,13 @@ func GetJob(job string, tableName string, dynaClient dynamodbiface.DynamoDBAPI) 
 
 func MakeSignedURI(s3Service s3iface.S3API, bucket string, key string) (string, error) {
 
-	reqo, _ := s3Service.GetObjectRequest(&s3.GetObjectInput{
+	reqo, out := s3Service.GetObjectRequest(&s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
+	if out != nil {
+		log.Println("Failed to create request", out)
+	}
 	uri, err := reqo.Presign(15 * time.Minute)
 
 	if err != nil {
@@ -206,7 +216,7 @@ func MakeSignedPutURI(s3Service s3iface.S3API, bucket string, key string) (strin
 		Key:    aws.String(key),
 	})
 	uri, err := reqo.Presign(15 * time.Minute)
-
+	fmt.Println("Here ", uri, err)
 	if err != nil {
 		log.Println("Failed to sign request", err)
 	}
@@ -217,21 +227,28 @@ func MakeSignedPutURI(s3Service s3iface.S3API, bucket string, key string) (strin
 
 func GetUploadUriHandler(w http.ResponseWriter, r *http.Request) {
 	// Get Path Variables
+	fmt.Println("GetUploadIUriHandler")
 	vars := mux.Vars(r)
 	user := vars["user"]
 	id := vars["id"]
+	fmt.Println("User: ", user)
+	fmt.Println("id: ", id)
 	// Perform Operation
 	body, err := GetUploadUri(g_s3, g_projectBucket, user, id)
 	// Write Response
+	fmt.Println("Body", body, err)
 	WriteResponse(w, body, err)
 }
 
 func GetUploadUri(S3 s3iface.S3API, bucket string, user string, id string) (string, error) {
-	reqo, _ := S3.PutObjectRequest(&s3.PutObjectInput{
+	reqo, ou := S3.PutObjectRequest(&s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String("users/" + user + "/" + id),
 	})
+	fmt.Println(reqo)
+	fmt.Println("OU: ", ou)
 	urlStr, err := reqo.Presign(15 * time.Minute)
+	fmt.Println("Got URL: ", urlStr, err)
 	return urlStr, err
 }
 

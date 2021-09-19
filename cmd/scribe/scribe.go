@@ -30,8 +30,8 @@ type args struct {
 func main() {
 	var arg args
 
-	transribeCommand := flag.NewFlagSet("transcribe", flag.ExitOnError)
-	arg.fileName = transribeCommand.String("filename", "", "The file to be uploaded")
+	transcribeCommand := flag.NewFlagSet("transcribe", flag.ExitOnError)
+	arg.fileName = transcribeCommand.String("filename", "123", "The file to be uploaded")
 	listCommand := flag.NewFlagSet("list", flag.ExitOnError)
 
 	getCommand := flag.NewFlagSet("get", flag.ExitOnError)
@@ -39,7 +39,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "transcribe":
-		transribeCommand.Parse(os.Args[2:])
+		transcribeCommand.Parse(os.Args[2:])
 	case "list":
 		listCommand.Parse(os.Args[2:])
 	case "get":
@@ -53,7 +53,8 @@ func main() {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	if transribeCommand.Parsed() {
+	if transcribeCommand.Parsed() {
+		fmt.Println("Here")
 		DoRemote(arg, config)
 	}
 	if listCommand.Parsed() {
@@ -83,9 +84,10 @@ func Login(sess *session.Session, lparams LoginParams) (*cognitoidentityprovider
 		},
 		ClientId: aws.String(lparams.ApiKey),
 	}
-
+	fmt.Println(params)
 	cip := cognitoidentityprovider.New(sess)
 	authResp, err := cip.InitiateAuth(params)
+	fmt.Println(authResp, err)
 	return authResp, err
 }
 
@@ -99,10 +101,11 @@ func ListJobs(arg args, config Config) error {
 		Password: config.Password,
 	}
 	authRequestOutput, _ := Login(sess, lparams)
+	fmt.Println(authRequestOutput)
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	url := config.Api + "/transcribe/" + config.UserName + "/job"
 	data, err := GetRequest(url, token)
-	fmt.Println(string(data), err)
+	fmt.Println("Response: ", string(data), err)
 	return err
 }
 
@@ -198,9 +201,11 @@ func DoRemote(arg args, config Config) error {
 	token := *authRequestOutput.AuthenticationResult.IdToken
 	user := config.UserName
 	file := *arg.fileName
+	fmt.Println("File ", file, " <-")
 	api := config.Api
 	url := api + "/transcribe/" + user + "/upload/" + file
 	data, _ := GetRequest(url, token)
+	fmt.Println(string(data)) // Check 404
 	var reqURL string
 	json.Unmarshal(data, &reqURL)
 	err := SendFile(reqURL, file)
@@ -209,8 +214,11 @@ func DoRemote(arg args, config Config) error {
 
 func SendFile(url string, filename string) error {
 
+	fmt.Println("Sending!!! ", url, filename)
+	fmt.Println(url)
 	file, err := os.Open(filename)
 	if err != nil {
+		fmt.Println("fuck")
 		return err
 	}
 	defer file.Close()
@@ -220,13 +228,14 @@ func SendFile(url string, filename string) error {
 
 	request, _ := http.NewRequest("PUT", url, strings.NewReader(string(bs)))
 	client := &http.Client{}
-
+	fmt.Println(request)
 	resp, err := client.Do(request)
 	if err != nil && resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		fmt.Println("Response: ", string(body), err)
 	}
+
 	if err != nil {
 		log.Fatal(err)
 	}

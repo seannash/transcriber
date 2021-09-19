@@ -27,6 +27,8 @@ type SesSendEmail interface {
 
 func Send(svc SesSendEmail, sender string, recipient string, body string) error {
 	// Assemble the email.
+	fmt.Println("Send now!")
+	fmt.Println(sender, recipient, body)
 	input := &ses.SendEmailInput{
 		Destination: &ses.Destination{
 			CcAddresses: []*string{},
@@ -79,14 +81,18 @@ type CognitoGetUser interface {
 }
 
 func GetEmailFromUser(svc CognitoGetUser, pool string, user string) (string, error) {
+	fmt.Println("GetEmailFromUser!", pool, user)
 	record, err := svc.AdminGetUser(&cognitoidentityprovider.AdminGetUserInput{
 		UserPoolId: aws.String(pool),
 		Username:   aws.String(user),
 	})
+	fmt.Println(record, err)
 	if err != nil {
 		return "", err
 	}
+	fmt.Println(record.UserAttributes)
 	for _, v := range record.UserAttributes {
+		fmt.Println(v)
 		if *v.Name == "email" {
 			return *v.Value, nil
 		}
@@ -112,6 +118,7 @@ func InternalHandleRequest(ctx context.Context, events events.SQSEvent, getUser 
 			fmt.Println("Cannot parse: ", body, "\n", err.Error())
 			continue
 		}
+		fmt.Println(msg)
 		msg.To, err = getUser(msg.To)
 		if err != nil {
 			fmt.Println("Cannot get email for user: ", msg.To)
@@ -152,7 +159,7 @@ func main() {
 	globalArea = GlobalArea{
 		Sess:           sess,
 		Pool:           os.Getenv("USER_POOL"),
-		SendingAddress: os.Getenv("EMAIL_USER"),
+		SendingAddress: "sean.c.nash@gmail.com", //os.Getenv("EMAIL_USER"),
 		SES:            ses.New(sess),
 		COGNITO:        cognitoidentityprovider.New(sess)}
 	lambda.Start(HandleRequest)
